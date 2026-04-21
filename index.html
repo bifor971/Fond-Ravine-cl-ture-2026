@@ -53,8 +53,15 @@
             ];
 
             useEffect(() => {
+                let matchesLoaded = false;
+
                 const unsubMatches = db.collection('cloture').doc('matches').onSnapshot((doc) => {
-                    if (doc.exists) setMatches(doc.data().data || []); else initializeData();
+                    if (doc.exists && doc.data().data && doc.data().data.length > 0) {
+                        setMatches(doc.data().data);
+                        matchesLoaded = true;
+                    } else if (!matchesLoaded) {
+                        initializeData();
+                    }
                 });
                 const unsubPlayers = db.collection('cloture').doc('players').onSnapshot((doc) => {
                     if (doc.exists) setPlayers(doc.data().data || []);
@@ -70,11 +77,24 @@
             }, []);
 
             const initializeData = async () => {
-                const initialMatches = championshipDates.map((dateStr, idx) => ({ journee: idx + 1, date: dateStr, scoreRouges: null, scoreBleus: null, goalsRouges: [], goalsBleus: [] }));
-                await db.collection('cloture').doc('matches').set({ data: initialMatches });
-                await db.collection('cloture').doc('players').set({ data: [] });
-                await db.collection('cloture').doc('scorers').set({ data: {} });
-                await db.collection('cloture').doc('assists').set({ data: {} });
+                const initialMatches = championshipDates.map((dateStr, idx) => ({
+                    journee: idx + 1,
+                    date: dateStr,
+                    scoreRouges: null,
+                    scoreBleus: null,
+                    goalsRouges: [],
+                    goalsBleus: []
+                }));
+                try {
+                    await db.collection('cloture').doc('matches').set({ data: initialMatches });
+                    await db.collection('cloture').doc('players').set({ data: [] });
+                    await db.collection('cloture').doc('scorers').set({ data: {} });
+                    await db.collection('cloture').doc('assists').set({ data: {} });
+                    setMatches(initialMatches);
+                } catch(e) {
+                    // Si Firebase échoue, on charge quand même les matchs localement
+                    setMatches(initialMatches);
+                }
             };
 
             const saveData = async (newMatches, newPlayers, newScorers, newAssists) => {
