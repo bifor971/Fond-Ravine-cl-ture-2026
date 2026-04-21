@@ -27,12 +27,37 @@
     </script>
     <script type="text/babel">
         const { useState, useEffect } = React;
+
+        // ✅ DATES FIXES - Indépendantes de Firebase
+        const CHAMPIONSHIP_DATES = [
+            '2026-04-22', '2026-04-24', '2026-04-25', '2026-04-29',
+            '2026-05-01', '2026-05-02', '2026-05-06', '2026-05-08', '2026-05-09',
+            '2026-05-13', '2026-05-15', '2026-05-16', '2026-05-20', '2026-05-22',
+            '2026-05-23', '2026-05-27', '2026-05-29', '2026-05-30'
+        ];
+
+        // ✅ Générer les matchs par défaut SANS Firebase
+        const DEFAULT_MATCHES = CHAMPIONSHIP_DATES.map((dateStr, idx) => ({
+            journee: idx + 1,
+            date: dateStr,
+            scoreRouges: null,
+            scoreBleus: null,
+            goalsRouges: [],
+            goalsBleus: []
+        }));
+
+        const formatDate = (dateStr) => {
+            return new Date(dateStr + 'T12:00:00').toLocaleDateString('fr-FR', {
+                weekday: 'long', day: 'numeric', month: 'long'
+            });
+        };
+
         const AdminApp = () => {
-            const [matches, setMatches] = useState([]);
+            const [matches, setMatches] = useState(DEFAULT_MATCHES); // ✅ Chargé par défaut
             const [players, setPlayers] = useState([]);
             const [scorers, setScorers] = useState({});
             const [assists, setAssists] = useState({});
-            const [loading, setLoading] = useState(true);
+            const [firebaseReady, setFirebaseReady] = useState(false);
             const [selectedMatch, setSelectedMatch] = useState(null);
             const [selectedDate, setSelectedDate] = useState('');
             const [scoreRouges, setScoreRouges] = useState('');
@@ -44,58 +69,43 @@
             const [goalsRouges, setGoalsRouges] = useState([]);
             const [goalsBleus, setGoalsBleus] = useState([]);
             const [saving, setSaving] = useState(false);
+            const [status, setStatus] = useState('🔄 Connexion Firebase...');
 
-            const championshipDates = [
-                '2026-04-22', '2026-04-24', '2026-04-25', '2026-04-29',
-                '2026-05-01', '2026-05-02', '2026-05-06', '2026-05-08', '2026-05-09',
-                '2026-05-13', '2026-05-15', '2026-05-16', '2026-05-20', '2026-05-22',
-                '2026-05-23', '2026-05-27', '2026-05-29', '2026-05-30'
-            ];
-
+            // ✅ Firebase charge PAR DESSUS les données par défaut
             useEffect(() => {
-                let matchesLoaded = false;
-
-                const unsubMatches = db.collection('cloture').doc('matches').onSnapshot((doc) => {
-                    if (doc.exists && doc.data().data && doc.data().data.length > 0) {
-                        setMatches(doc.data().data);
-                        matchesLoaded = true;
-                    } else if (!matchesLoaded) {
-                        initializeData();
-                    }
-                });
-                const unsubPlayers = db.collection('cloture').doc('players').onSnapshot((doc) => {
-                    if (doc.exists) setPlayers(doc.data().data || []);
-                });
-                const unsubScorers = db.collection('cloture').doc('scorers').onSnapshot((doc) => {
-                    if (doc.exists) setScorers(doc.data().data || {});
-                });
-                const unsubAssists = db.collection('cloture').doc('assists').onSnapshot((doc) => {
-                    if (doc.exists) setAssists(doc.data().data || {});
-                });
-                setLoading(false);
-                return () => { unsubMatches(); unsubPlayers(); unsubScorers(); unsubAssists(); };
-            }, []);
-
-            const initializeData = async () => {
-                const initialMatches = championshipDates.map((dateStr, idx) => ({
-                    journee: idx + 1,
-                    date: dateStr,
-                    scoreRouges: null,
-                    scoreBleus: null,
-                    goalsRouges: [],
-                    goalsBleus: []
-                }));
                 try {
-                    await db.collection('cloture').doc('matches').set({ data: initialMatches });
-                    await db.collection('cloture').doc('players').set({ data: [] });
-                    await db.collection('cloture').doc('scorers').set({ data: {} });
-                    await db.collection('cloture').doc('assists').set({ data: {} });
-                    setMatches(initialMatches);
+                    const unsubMatches = db.collection('cloture').doc('matches').onSnapshot((doc) => {
+                        if (doc.exists && doc.data().data && doc.data().data.length > 0) {
+                            setMatches(doc.data().data);
+                            setStatus('✅ Connecté');
+                        } else {
+                            // Pas de données dans Firebase → on sauvegarde les matchs par défaut
+                            db.collection('cloture').doc('matches').set({ data: DEFAULT_MATCHES })
+                                .then(() => setStatus('✅ Calendrier initialisé'))
+                                .catch(() => setStatus('⚠️ Mode hors-ligne'));
+                        }
+                        setFirebaseReady(true);
+                    }, (error) => {
+                        setStatus('⚠️ Mode hors-ligne - données locales');
+                        setFirebaseReady(true);
+                    });
+
+                    const unsubPlayers = db.collection('cloture').doc('players').onSnapshot((doc) => {
+                        if (doc.exists) setPlayers(doc.data().data || []);
+                    });
+                    const unsubScorers = db.collection('cloture').doc('scorers').onSnapshot((doc) => {
+                        if (doc.exists) setScorers(doc.data().data || {});
+                    });
+                    const unsubAssists = db.collection('cloture').doc('assists').onSnapshot((doc) => {
+                        if (doc.exists) setAssists(doc.data().data || {});
+                    });
+
+                    return () => { unsubMatches(); unsubPlayers(); unsubScorers(); unsubAssists(); };
                 } catch(e) {
-                    // Si Firebase échoue, on charge quand même les matchs localement
-                    setMatches(initialMatches);
+                    setStatus('⚠️ Mode hors-ligne');
+                    setFirebaseReady(true);
                 }
-            };
+            }, []);
 
             const saveData = async (newMatches, newPlayers, newScorers, newAssists) => {
                 try {
@@ -103,16 +113,21 @@
                     await db.collection('cloture').doc('players').set({ data: newPlayers });
                     await db.collection('cloture').doc('scorers').set({ data: newScorers });
                     await db.collection('cloture').doc('assists').set({ data: newAssists });
-                } catch (error) { alert('Erreur de sauvegarde'); }
+                    return true;
+                } catch (error) {
+                    alert('⚠️ Erreur de sauvegarde Firebase. Vérifiez les règles Firestore.');
+                    return false;
+                }
             };
 
             const addPlayer = async () => {
-                if (newPlayerName.trim() && !players.includes(newPlayerName.trim())) {
-                    const updatedPlayers = [...players, newPlayerName.trim()].sort();
-                    setPlayers(updatedPlayers);
-                    await saveData(matches, updatedPlayers, scorers, assists);
-                    setNewPlayerName(''); alert('Joueur ajouté !');
-                }
+                if (!newPlayerName.trim()) return;
+                if (players.includes(newPlayerName.trim())) { alert('Ce joueur existe déjà !'); return; }
+                const updatedPlayers = [...players, newPlayerName.trim()].sort();
+                setPlayers(updatedPlayers);
+                await saveData(matches, updatedPlayers, scorers, assists);
+                setNewPlayerName('');
+                alert('✅ Joueur ajouté !');
             };
 
             const addGoal = () => {
@@ -129,28 +144,40 @@
             };
 
             const handleSaveMatch = async () => {
-                if (!selectedMatch || scoreRouges === '' || scoreBleus === '') { alert('Remplir tous les champs'); return; }
+                if (!selectedMatch || scoreRouges === '' || scoreBleus === '') {
+                    alert('⚠️ Remplir le score des deux équipes'); return;
+                }
                 if (parseInt(scoreRouges) !== goalsRouges.length || parseInt(scoreBleus) !== goalsBleus.length) {
-                    alert(`Le nombre de buts ne correspond pas !\nRouges: ${goalsRouges.length}/${scoreRouges} - Bleus: ${goalsBleus.length}/${scoreBleus}`);
+                    alert(`⚠️ Le nombre de buts ne correspond pas !\nRouges: ${goalsRouges.length} buts enregistrés / ${scoreRouges} au score\nBleus: ${goalsBleus.length} buts enregistrés / ${scoreBleus} au score`);
                     return;
                 }
                 setSaving(true);
-                const updatedMatches = [...matches];
-                const matchIndex = matches.findIndex(m => m.journee === selectedMatch.journee);
-                updatedMatches[matchIndex] = { ...selectedMatch, date: selectedDate, scoreRouges: parseInt(scoreRouges), scoreBleus: parseInt(scoreBleus), goalsRouges: [...goalsRouges], goalsBleus: [...goalsBleus] };
-
+                const updatedMatches = matches.map(m =>
+                    m.journee === selectedMatch.journee
+                        ? { ...m, date: selectedDate, scoreRouges: parseInt(scoreRouges), scoreBleus: parseInt(scoreBleus), goalsRouges: [...goalsRouges], goalsBleus: [...goalsBleus] }
+                        : m
+                );
                 const updatedScorers = { ...scorers };
                 const updatedAssists = { ...assists };
                 [...goalsRouges, ...goalsBleus].forEach(goal => {
                     updatedScorers[goal.scorer] = (updatedScorers[goal.scorer] || 0) + 1;
                     if (goal.assist !== 'Aucune') updatedAssists[goal.assist] = (updatedAssists[goal.assist] || 0) + 1;
                 });
-                setScorers(updatedScorers); setAssists(updatedAssists);
-                await saveData(updatedMatches, players, updatedScorers, updatedAssists);
-                setMatches(updatedMatches); resetForm(); setSaving(false); alert('Match enregistré !');
+                setScorers(updatedScorers);
+                setAssists(updatedAssists);
+                const saved = await saveData(updatedMatches, players, updatedScorers, updatedAssists);
+                if (saved) {
+                    setMatches(updatedMatches);
+                    resetForm();
+                    alert('✅ Match enregistré avec succès !');
+                }
+                setSaving(false);
             };
 
-            const resetForm = () => { setSelectedMatch(null); setSelectedDate(''); setScoreRouges(''); setScoreBleus(''); setGoalsRouges([]); setGoalsBleus([]); setSelectedScorer(''); setSelectedAssist(''); };
+            const resetForm = () => {
+                setSelectedMatch(null); setSelectedDate(''); setScoreRouges(''); setScoreBleus('');
+                setGoalsRouges([]); setGoalsBleus([]); setSelectedScorer(''); setSelectedAssist('');
+            };
 
             const handleMatchSelect = (e) => {
                 const value = e.target.value;
@@ -158,7 +185,7 @@
                 const match = matches.find(m => m.journee === parseInt(value));
                 if (match) {
                     setSelectedMatch(match);
-                    setSelectedDate(match.date || '');
+                    setSelectedDate(match.date);
                     setScoreRouges(match.scoreRouges !== null ? String(match.scoreRouges) : '');
                     setScoreBleus(match.scoreBleus !== null ? String(match.scoreBleus) : '');
                     setGoalsRouges(match.goalsRouges || []);
@@ -166,128 +193,150 @@
                 }
             };
 
-            const handleDateChange = (e) => {
-                const newDate = e.target.value;
-                setSelectedDate(newDate);
-                if (selectedMatch) setSelectedMatch({ ...selectedMatch, date: newDate });
-            };
-
             const handleResetData = async () => {
-                if (window.confirm('⚠️ Réinitialiser TOUT ?')) {
-                    const initialMatches = championshipDates.map((dateStr, idx) => ({ journee: idx + 1, date: dateStr, scoreRouges: null, scoreBleus: null, goalsRouges: [], goalsBleus: [] }));
-                    setMatches(initialMatches); setPlayers([]); setScorers({}); setAssists({});
-                    await saveData(initialMatches, [], {}, {}); resetForm(); alert('Réinitialisé !');
+                if (window.confirm('⚠️ Réinitialiser TOUTES les données ? Irréversible !')) {
+                    setMatches(DEFAULT_MATCHES); setPlayers([]); setScorers({}); setAssists({});
+                    await saveData(DEFAULT_MATCHES, [], {}, {});
+                    resetForm();
+                    alert('✅ Données réinitialisées !');
                 }
             };
-
-            if (loading) return <div className="flex items-center justify-center h-screen bg-red-900 text-white text-xl">⚙️ Chargement...</div>;
 
             return (
                 <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 p-3">
                     <div className="max-w-4xl mx-auto">
+
+                        {/* HEADER */}
                         <div className="bg-white rounded-lg shadow-xl p-3 mb-3">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 bg-red-600 rounded-full"></div>
-                                <div><h1 className="text-xl font-bold">🔒 ADMIN - Championnat de Clôture</h1><p className="text-xs text-gray-600">Rouges vs Bleus</p></div>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-red-600 rounded-full"></div>
+                                    <div className="w-8 h-8 bg-blue-600 rounded-full"></div>
+                                    <div>
+                                        <h1 className="text-lg font-bold">🔒 ADMIN - Championnat de Clôture</h1>
+                                        <p className="text-xs text-gray-500">Rouges vs Bleus • 18 journées</p>
+                                    </div>
+                                </div>
+                                <span className="text-xs text-gray-500">{status}</span>
                             </div>
                         </div>
+
+                        {/* JOUEURS */}
                         <div className="bg-white rounded-lg shadow-lg p-3 mb-3">
                             <h2 className="text-lg font-bold mb-2">👥 Joueurs</h2>
                             <div className="flex gap-2 mb-2">
-                                <input type="text" className="flex-1 p-2 border rounded text-sm" placeholder="Nom du joueur" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && addPlayer()} />
-                                <button onClick={addPlayer} className="bg-green-600 text-white px-3 py-2 rounded font-bold text-sm">➕</button>
+                                <input
+                                    type="text"
+                                    className="flex-1 p-2 border-2 rounded text-sm"
+                                    placeholder="Nom du joueur"
+                                    value={newPlayerName}
+                                    onChange={(e) => setNewPlayerName(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && addPlayer()}
+                                />
+                                <button onClick={addPlayer} className="bg-green-600 text-white px-4 py-2 rounded font-bold text-sm">➕ Ajouter</button>
                             </div>
-                            <div className="bg-gray-50 p-2 rounded max-h-24 overflow-y-auto"><p className="font-semibold text-xs mb-1">Joueurs ({players.length}):</p><div className="flex flex-wrap gap-1">{players.map(p => <span key={p} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">{p}</span>)}</div></div>
+                            <div className="bg-gray-50 p-2 rounded max-h-24 overflow-y-auto">
+                                <p className="font-semibold text-xs mb-1">Joueurs inscrits ({players.length}) :</p>
+                                <div className="flex flex-wrap gap-1">
+                                    {players.length > 0
+                                        ? players.map(p => <span key={p} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">{p}</span>)
+                                        : <p className="text-gray-400 text-xs">Aucun joueur enregistré</p>
+                                    }
+                                </div>
+                            </div>
                         </div>
+
+                        {/* MATCHS */}
                         <div className="bg-white rounded-lg shadow-lg p-3 mb-3">
-                            <h2 className="text-lg font-bold mb-2">⚽ Matchs</h2>
-                            <select className="w-full p-2 border rounded text-sm mb-2" onChange={handleMatchSelect} value={selectedMatch?.journee || ''}>
-                                <option value="">-- Sélectionner un match --</option>
-                                {matches.map(match => (
-                                    <option key={match.journee} value={match.journee}>
-                                        J{match.journee} - {new Date(match.date + 'T12:00:00').toLocaleDateString('fr-FR')}
-                                        {match.scoreRouges !== null ? ` (${match.scoreRouges}-${match.scoreBleus})` : ''}
-                                    </option>
-                                ))}
-                            </select>
+                            <h2 className="text-lg font-bold mb-2">⚽ Saisir un résultat</h2>
+
+                            {/* ✅ Menu déroulant des matchs - toujours visible */}
+                            <div className="mb-3">
+                                <label className="block font-semibold text-sm mb-1 text-gray-700">Sélectionner une journée :</label>
+                                <select
+                                    className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm bg-white"
+                                    onChange={handleMatchSelect}
+                                    value={selectedMatch?.journee || ''}
+                                >
+                                    <option value="">-- Choisir une journée --</option>
+                                    {DEFAULT_MATCHES.map(match => {
+                                        const played = matches.find(m => m.journee === match.journee);
+                                        return (
+                                            <option key={match.journee} value={match.journee}>
+                                                J{match.journee} • {formatDate(match.date)}
+                                                {played && played.scoreRouges !== null ? ` ✅ (${played.scoreRouges}-${played.scoreBleus})` : ' ⏳ À jouer'}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
+
                             {selectedMatch && (
-                                <div className="space-y-2">
-                                    <div>
-                                        <label className="block font-semibold text-xs mb-1 text-gray-700">📅 Date du match :</label>
+                                <div className="space-y-3">
+                                    {/* DATE */}
+                                    <div className="bg-blue-50 p-3 rounded-lg">
+                                        <label className="block font-semibold text-sm mb-1 text-blue-800">📅 Date du match :</label>
                                         <input
                                             type="date"
-                                            className="w-full p-2 border-2 border-gray-300 rounded text-sm"
+                                            className="w-full p-2 border-2 border-blue-300 rounded-lg text-sm bg-white"
                                             value={selectedDate}
-                                            onChange={handleDateChange}
+                                            onChange={(e) => {
+                                                setSelectedDate(e.target.value);
+                                                setSelectedMatch({ ...selectedMatch, date: e.target.value });
+                                            }}
                                         />
                                         {selectedDate && (
-                                            <p className="text-xs text-green-600 mt-1">
-                                                ✅ {new Date(selectedDate + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                            <p className="text-xs text-blue-700 mt-1 font-semibold">
+                                                📌 {formatDate(selectedDate)}
                                             </p>
                                         )}
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div><label className="block font-semibold text-xs mb-1 text-red-600">Score Rouges:</label><input type="number" min="0" className="w-full p-2 border rounded text-sm" value={scoreRouges} onChange={(e) => setScoreRouges(e.target.value)} /></div>
-                                        <div><label className="block font-semibold text-xs mb-1 text-blue-600">Score Bleus:</label><input type="number" min="0" className="w-full p-2 border rounded text-sm" value={scoreBleus} onChange={(e) => setScoreBleus(e.target.value)} /></div>
+
+                                    {/* SCORES */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="bg-red-50 p-2 rounded-lg">
+                                            <label className="block font-semibold text-xs mb-1 text-red-700">🔴 Score Rouges :</label>
+                                            <input
+                                                type="number" min="0"
+                                                className="w-full p-2 border-2 border-red-300 rounded text-center text-xl font-bold"
+                                                value={scoreRouges}
+                                                onChange={(e) => setScoreRouges(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="bg-blue-50 p-2 rounded-lg">
+                                            <label className="block font-semibold text-xs mb-1 text-blue-700">🔵 Score Bleus :</label>
+                                            <input
+                                                type="number" min="0"
+                                                className="w-full p-2 border-2 border-blue-300 rounded text-center text-xl font-bold"
+                                                value={scoreBleus}
+                                                onChange={(e) => setScoreBleus(e.target.value)}
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="border-t pt-2">
-                                        <h3 className="font-bold text-sm mb-1">Ajouter un but</h3>
+
+                                    {/* BUTEURS */}
+                                    <div className="border-2 border-gray-200 rounded-lg p-3">
+                                        <h3 className="font-bold text-sm mb-2">⚽ Ajouter un but</h3>
                                         <div className="space-y-2">
-                                            <select className="w-full p-2 border rounded text-sm" value={selectedTeam} onChange={(e) => setSelectedTeam(e.target.value)}>
-                                                <option value="rouges">Équipe Rouges</option>
-                                                <option value="bleus">Équipe Bleus</option>
+                                            <select
+                                                className="w-full p-2 border-2 rounded text-sm"
+                                                value={selectedTeam}
+                                                onChange={(e) => setSelectedTeam(e.target.value)}
+                                            >
+                                                <option value="rouges">🔴 Équipe Rouges</option>
+                                                <option value="bleus">🔵 Équipe Bleus</option>
                                             </select>
-                                            <select className="w-full p-2 border rounded text-sm" value={selectedScorer} onChange={(e) => setSelectedScorer(e.target.value)}>
+                                            <select
+                                                className="w-full p-2 border-2 rounded text-sm"
+                                                value={selectedScorer}
+                                                onChange={(e) => setSelectedScorer(e.target.value)}
+                                            >
                                                 <option value="">-- Buteur --</option>
                                                 {players.map(p => <option key={p} value={p}>{p}</option>)}
                                             </select>
-                                            <select className="w-full p-2 border rounded text-sm" value={selectedAssist} onChange={(e) => setSelectedAssist(e.target.value)}>
-                                                <option value="">-- Passeur (optionnel) --</option>
-                                                {players.map(p => <option key={p} value={p}>{p}</option>)}
-                                            </select>
-                                            <button onClick={addGoal} disabled={!selectedScorer} className="w-full bg-blue-600 text-white py-2 rounded font-bold text-sm disabled:bg-gray-300">➕ Ajouter ce but</button>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="bg-red-50 p-2 rounded">
-                                            <h4 className="font-bold text-red-700 text-xs mb-1">Buts Rouges ({goalsRouges.length})</h4>
-                                            <div className="space-y-1">
-                                                {goalsRouges.map((goal, i) => (
-                                                    <div key={i} className="bg-white p-1 rounded text-xs flex justify-between items-start">
-                                                        <div>
-                                                            <div>⚽ <strong>{goal.scorer}</strong></div>
-                                                            {goal.assist !== 'Aucune' && <div className="text-gray-600">🎯 {goal.assist}</div>}
-                                                        </div>
-                                                        <button onClick={() => removeGoal('rouges', i)} className="text-red-600">❌</button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="bg-blue-50 p-2 rounded">
-                                            <h4 className="font-bold text-blue-700 text-xs mb-1">Buts Bleus ({goalsBleus.length})</h4>
-                                            <div className="space-y-1">
-                                                {goalsBleus.map((goal, i) => (
-                                                    <div key={i} className="bg-white p-1 rounded text-xs flex justify-between items-start">
-                                                        <div>
-                                                            <div>⚽ <strong>{goal.scorer}</strong></div>
-                                                            {goal.assist !== 'Aucune' && <div className="text-gray-600">🎯 {goal.assist}</div>}
-                                                        </div>
-                                                        <button onClick={() => removeGoal('bleus', i)} className="text-blue-600">❌</button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button onClick={handleSaveMatch} disabled={saving} className="w-full bg-green-600 text-white py-3 rounded font-bold text-sm">{saving ? '💾 Enregistrement...' : '✅ Enregistrer le Match'}</button>
-                                </div>
-                            )}
-                        </div>
-                        <div className="bg-white rounded-lg shadow-lg p-3"><h3 className="font-bold text-red-600 mb-2 text-sm">⚠️ Zone Danger</h3><button onClick={handleResetData} className="bg-red-600 text-white px-3 py-2 rounded font-bold text-sm">🗑️ Réinitialiser tout</button></div>
-                    </div>
-                </div>
-            );
-        };
-        ReactDOM.render(<AdminApp />, document.getElementById('root'));
-    </script>
-</body>
-</html>
+                                            <select
+                                                className="w-full p-2 border-2 rounded text-sm"
+                                                value={selectedAssist}
+                                                onChange={(e) => setSelectedAssist(e.target.value)}
+                                            >
+                                                <option value="">-- Passeur (optionnel) --
