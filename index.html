@@ -4,16 +4,146 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🔒 ADMIN - Championnat de Clôture</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #7f1d1d; min-height: 100vh; padding: 10px; }
+        .card { background: white; border-radius: 12px; padding: 15px; margin-bottom: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h1 { font-size: 18px; font-weight: bold; }
+        h2 { font-size: 16px; font-weight: bold; margin-bottom: 10px; }
+        h3 { font-size: 14px; font-weight: bold; margin-bottom: 8px; }
+        label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+        input, select { width: 100%; padding: 10px; border: 2px solid #ccc; border-radius: 8px; font-size: 14px; margin-bottom: 8px; background: white; }
+        input:focus, select:focus { border-color: #2563eb; outline: none; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; margin-bottom: 8px; }
+        .btn-green { background: #16a34a; color: white; }
+        .btn-blue { background: #2563eb; color: white; }
+        .btn-red { background: #dc2626; color: white; }
+        .btn-gray { background: #e5e7eb; color: #374151; }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .score-input { text-align: center; font-size: 24px; font-weight: bold; }
+        .tag { display: inline-block; background: #dbeafe; color: #1e40af; padding: 3px 8px; border-radius: 20px; font-size: 11px; margin: 2px; }
+        .goal-item { background: #f9fafb; border-radius: 6px; padding: 6px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .goal-item button { background: none; border: none; cursor: pointer; font-size: 14px; }
+        .box-red { background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; padding: 10px; }
+        .box-blue { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; padding: 10px; }
+        .status { font-size: 11px; color: #6b7280; }
+        .header { display: flex; align-items: center; gap: 8px; }
+        .dot-red { width: 28px; height: 28px; background: #dc2626; border-radius: 50%; flex-shrink: 0; }
+        .dot-blue { width: 28px; height: 28px; background: #2563eb; border-radius: 50%; flex-shrink: 0; }
+        .info-box { background: #eff6ff; border: 2px solid #93c5fd; border-radius: 8px; padding: 10px; margin-bottom: 10px; font-size: 13px; }
+        .success { color: #16a34a; font-size: 12px; margin-top: 4px; }
+        .players-box { background: #f9fafb; border-radius: 8px; padding: 8px; max-height: 100px; overflow-y: auto; }
+        .match-played { color: #16a34a; font-weight: bold; }
+        .match-pending { color: #6b7280; }
+    </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div style="max-width:600px; margin:0 auto;">
+
+        <!-- HEADER -->
+        <div class="card">
+            <div class="header">
+                <div class="dot-red"></div>
+                <div class="dot-blue"></div>
+                <div>
+                    <h1>🔒 ADMIN - Championnat de Clôture</h1>
+                    <p class="status" id="firebaseStatus">🔄 Connexion...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- JOUEURS -->
+        <div class="card">
+            <h2>👥 Joueurs</h2>
+            <div style="display:flex; gap:8px; margin-bottom:8px;">
+                <input type="text" id="newPlayer" placeholder="Nom du joueur" style="margin:0; flex:1;" onkeypress="if(event.key==='Enter') addPlayer()">
+                <button class="btn btn-green" style="width:auto; padding:10px 16px; margin:0;" onclick="addPlayer()">➕</button>
+            </div>
+            <div class="players-box">
+                <p style="font-size:12px; font-weight:bold; margin-bottom:4px;">Joueurs (<span id="playerCount">0</span>) :</p>
+                <div id="playersList"><p style="color:#9ca3af; font-size:12px;">Aucun joueur</p></div>
+            </div>
+        </div>
+
+        <!-- MATCHS -->
+        <div class="card">
+            <h2>⚽ Saisir un résultat</h2>
+            <label>Sélectionner une journée :</label>
+            <select id="matchSelect" onchange="selectMatch()">
+                <option value="">-- Choisir une journée --</option>
+            </select>
+
+            <div id="matchForm" style="display:none;">
+                <!-- DATE -->
+                <div class="info-box">
+                    <label>📅 Date du match :</label>
+                    <input type="date" id="matchDate" onchange="updateDateLabel()">
+                    <p class="success" id="dateLabel"></p>
+                </div>
+
+                <!-- SCORES -->
+                <div class="grid2" style="margin-bottom:8px;">
+                    <div class="box-red">
+                        <label style="color:#dc2626;">🔴 Rouges :</label>
+                        <input type="number" min="0" id="scoreRouges" class="score-input" placeholder="0">
+                    </div>
+                    <div class="box-blue">
+                        <label style="color:#2563eb;">🔵 Bleus :</label>
+                        <input type="number" min="0" id="scoreBleus" class="score-input" placeholder="0">
+                    </div>
+                </div>
+
+                <!-- AJOUTER BUT -->
+                <div style="border:2px solid #e5e7eb; border-radius:8px; padding:10px; margin-bottom:8px;">
+                    <h3>⚽ Ajouter un but</h3>
+                    <label>Équipe :</label>
+                    <select id="goalTeam">
+                        <option value="rouges">🔴 Rouges</option>
+                        <option value="bleus">🔵 Bleus</option>
+                    </select>
+                    <label>Buteur :</label>
+                    <select id="goalScorer">
+                        <option value="">-- Buteur --</option>
+                    </select>
+                    <label>Passeur (optionnel) :</label>
+                    <select id="goalAssist">
+                        <option value="">-- Passeur --</option>
+                    </select>
+                    <button class="btn btn-blue" onclick="addGoal()">➕ Ajouter ce but</button>
+                </div>
+
+                <!-- LISTE DES BUTS -->
+                <div class="grid2" style="margin-bottom:8px;">
+                    <div class="box-red">
+                        <h3 style="color:#dc2626; font-size:12px;">🔴 Buts Rouges (<span id="countRouges">0</span>)</h3>
+                        <div id="goalsRougesList"><p style="color:#9ca3af;font-size:11px;text-align:center;">Aucun but</p></div>
+                    </div>
+                    <div class="box-blue">
+                        <h3 style="color:#2563eb; font-size:12px;">🔵 Buts Bleus (<span id="countBleus">0</span>)</h3>
+                        <div id="goalsBlesList"><p style="color:#9ca3af;font-size:11px;text-align:center;">Aucun but</p></div>
+                    </div>
+                </div>
+
+                <button class="btn btn-green" id="saveBtn" onclick="saveMatch()">✅ Enregistrer le Match</button>
+            </div>
+        </div>
+
+        <!-- ZONE DANGER -->
+        <div class="card">
+            <h3 style="color:#dc2626;">⚠️ Zone Danger</h3>
+            <button class="btn btn-red" style="width:auto; padding:10px 16px; margin-top:8px;" onclick="resetAll()">🗑️ Réinitialiser toutes les données</button>
+        </div>
+
+    </div>
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
     <script>
+        // =====================
+        // CONFIGURATION
+        // =====================
         const firebaseConfig = {
             apiKey: "AIzaSyD26jNyvIzWYNwfS97N27iZES-AFWVtIGc",
             authDomain: "championnat-football.firebaseapp.com",
@@ -22,321 +152,256 @@
             messagingSenderId: "271329092716",
             appId: "1:271329092716:web:68e7ff9e0527f489c36449"
         };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-    </script>
-    <script type="text/babel">
-        const { useState, useEffect } = React;
 
-        // ✅ DATES FIXES - Indépendantes de Firebase
-        const CHAMPIONSHIP_DATES = [
-            '2026-04-22', '2026-04-24', '2026-04-25', '2026-04-29',
-            '2026-05-01', '2026-05-02', '2026-05-06', '2026-05-08', '2026-05-09',
-            '2026-05-13', '2026-05-15', '2026-05-16', '2026-05-20', '2026-05-22',
-            '2026-05-23', '2026-05-27', '2026-05-29', '2026-05-30'
+        const DATES = [
+            '2026-04-22','2026-04-24','2026-04-25','2026-04-29',
+            '2026-05-01','2026-05-02','2026-05-06','2026-05-08','2026-05-09',
+            '2026-05-13','2026-05-15','2026-05-16','2026-05-20','2026-05-22',
+            '2026-05-23','2026-05-27','2026-05-29','2026-05-30'
         ];
 
-        // ✅ Générer les matchs par défaut SANS Firebase
-        const DEFAULT_MATCHES = CHAMPIONSHIP_DATES.map((dateStr, idx) => ({
-            journee: idx + 1,
-            date: dateStr,
-            scoreRouges: null,
-            scoreBleus: null,
-            goalsRouges: [],
-            goalsBleus: []
+        // =====================
+        // ÉTAT LOCAL
+        // =====================
+        let players = [];
+        let scorers = {};
+        let assists = {};
+        let matches = DATES.map((d, i) => ({
+            journee: i + 1, date: d,
+            scoreRouges: null, scoreBleus: null,
+            goalsRouges: [], goalsBleus: []
         }));
+        let goalsRouges = [];
+        let goalsBleus = [];
+        let selectedJournee = null;
+        let db = null;
 
-        const formatDate = (dateStr) => {
-            return new Date(dateStr + 'T12:00:00').toLocaleDateString('fr-FR', {
-                weekday: 'long', day: 'numeric', month: 'long'
-            });
-        };
+        // =====================
+        // INIT
+        // =====================
+        function init() {
+            // Afficher le calendrier IMMÉDIATEMENT sans attendre Firebase
+            buildMatchSelect();
 
-        const AdminApp = () => {
-            const [matches, setMatches] = useState(DEFAULT_MATCHES); // ✅ Chargé par défaut
-            const [players, setPlayers] = useState([]);
-            const [scorers, setScorers] = useState({});
-            const [assists, setAssists] = useState({});
-            const [firebaseReady, setFirebaseReady] = useState(false);
-            const [selectedMatch, setSelectedMatch] = useState(null);
-            const [selectedDate, setSelectedDate] = useState('');
-            const [scoreRouges, setScoreRouges] = useState('');
-            const [scoreBleus, setScoreBleus] = useState('');
-            const [selectedTeam, setSelectedTeam] = useState('rouges');
-            const [selectedScorer, setSelectedScorer] = useState('');
-            const [selectedAssist, setSelectedAssist] = useState('');
-            const [newPlayerName, setNewPlayerName] = useState('');
-            const [goalsRouges, setGoalsRouges] = useState([]);
-            const [goalsBleus, setGoalsBleus] = useState([]);
-            const [saving, setSaving] = useState(false);
-            const [status, setStatus] = useState('🔄 Connexion Firebase...');
+            // Essayer Firebase
+            try {
+                firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
 
-            // ✅ Firebase charge PAR DESSUS les données par défaut
-            useEffect(() => {
-                try {
-                    const unsubMatches = db.collection('cloture').doc('matches').onSnapshot((doc) => {
-                        if (doc.exists && doc.data().data && doc.data().data.length > 0) {
-                            setMatches(doc.data().data);
-                            setStatus('✅ Connecté');
-                        } else {
-                            // Pas de données dans Firebase → on sauvegarde les matchs par défaut
-                            db.collection('cloture').doc('matches').set({ data: DEFAULT_MATCHES })
-                                .then(() => setStatus('✅ Calendrier initialisé'))
-                                .catch(() => setStatus('⚠️ Mode hors-ligne'));
-                        }
-                        setFirebaseReady(true);
-                    }, (error) => {
-                        setStatus('⚠️ Mode hors-ligne - données locales');
-                        setFirebaseReady(true);
-                    });
-
-                    const unsubPlayers = db.collection('cloture').doc('players').onSnapshot((doc) => {
-                        if (doc.exists) setPlayers(doc.data().data || []);
-                    });
-                    const unsubScorers = db.collection('cloture').doc('scorers').onSnapshot((doc) => {
-                        if (doc.exists) setScorers(doc.data().data || {});
-                    });
-                    const unsubAssists = db.collection('cloture').doc('assists').onSnapshot((doc) => {
-                        if (doc.exists) setAssists(doc.data().data || {});
-                    });
-
-                    return () => { unsubMatches(); unsubPlayers(); unsubScorers(); unsubAssists(); };
-                } catch(e) {
-                    setStatus('⚠️ Mode hors-ligne');
-                    setFirebaseReady(true);
-                }
-            }, []);
-
-            const saveData = async (newMatches, newPlayers, newScorers, newAssists) => {
-                try {
-                    await db.collection('cloture').doc('matches').set({ data: newMatches });
-                    await db.collection('cloture').doc('players').set({ data: newPlayers });
-                    await db.collection('cloture').doc('scorers').set({ data: newScorers });
-                    await db.collection('cloture').doc('assists').set({ data: newAssists });
-                    return true;
-                } catch (error) {
-                    alert('⚠️ Erreur de sauvegarde Firebase. Vérifiez les règles Firestore.');
-                    return false;
-                }
-            };
-
-            const addPlayer = async () => {
-                if (!newPlayerName.trim()) return;
-                if (players.includes(newPlayerName.trim())) { alert('Ce joueur existe déjà !'); return; }
-                const updatedPlayers = [...players, newPlayerName.trim()].sort();
-                setPlayers(updatedPlayers);
-                await saveData(matches, updatedPlayers, scorers, assists);
-                setNewPlayerName('');
-                alert('✅ Joueur ajouté !');
-            };
-
-            const addGoal = () => {
-                if (!selectedScorer) { alert('Sélectionnez un buteur'); return; }
-                const goal = { scorer: selectedScorer, assist: selectedAssist || 'Aucune' };
-                if (selectedTeam === 'rouges') setGoalsRouges([...goalsRouges, goal]);
-                else setGoalsBleus([...goalsBleus, goal]);
-                setSelectedScorer(''); setSelectedAssist('');
-            };
-
-            const removeGoal = (team, index) => {
-                if (team === 'rouges') setGoalsRouges(goalsRouges.filter((_, i) => i !== index));
-                else setGoalsBleus(goalsBleus.filter((_, i) => i !== index));
-            };
-
-            const handleSaveMatch = async () => {
-                if (!selectedMatch || scoreRouges === '' || scoreBleus === '') {
-                    alert('⚠️ Remplir le score des deux équipes'); return;
-                }
-                if (parseInt(scoreRouges) !== goalsRouges.length || parseInt(scoreBleus) !== goalsBleus.length) {
-                    alert(`⚠️ Le nombre de buts ne correspond pas !\nRouges: ${goalsRouges.length} buts enregistrés / ${scoreRouges} au score\nBleus: ${goalsBleus.length} buts enregistrés / ${scoreBleus} au score`);
-                    return;
-                }
-                setSaving(true);
-                const updatedMatches = matches.map(m =>
-                    m.journee === selectedMatch.journee
-                        ? { ...m, date: selectedDate, scoreRouges: parseInt(scoreRouges), scoreBleus: parseInt(scoreBleus), goalsRouges: [...goalsRouges], goalsBleus: [...goalsBleus] }
-                        : m
-                );
-                const updatedScorers = { ...scorers };
-                const updatedAssists = { ...assists };
-                [...goalsRouges, ...goalsBleus].forEach(goal => {
-                    updatedScorers[goal.scorer] = (updatedScorers[goal.scorer] || 0) + 1;
-                    if (goal.assist !== 'Aucune') updatedAssists[goal.assist] = (updatedAssists[goal.assist] || 0) + 1;
+                db.collection('cloture').doc('matches').onSnapshot(doc => {
+                    if (doc.exists && doc.data().data && doc.data().data.length > 0) {
+                        matches = doc.data().data;
+                        buildMatchSelect();
+                        if (selectedJournee) selectMatchByJournee(selectedJournee);
+                        document.getElementById('firebaseStatus').textContent = '✅ Connecté';
+                    } else {
+                        saveToFirebase();
+                        document.getElementById('firebaseStatus').textContent = '✅ Initialisé';
+                    }
+                }, err => {
+                    document.getElementById('firebaseStatus').textContent = '⚠️ Hors-ligne';
                 });
-                setScorers(updatedScorers);
-                setAssists(updatedAssists);
-                const saved = await saveData(updatedMatches, players, updatedScorers, updatedAssists);
-                if (saved) {
-                    setMatches(updatedMatches);
-                    resetForm();
-                    alert('✅ Match enregistré avec succès !');
-                }
-                setSaving(false);
-            };
 
-            const resetForm = () => {
-                setSelectedMatch(null); setSelectedDate(''); setScoreRouges(''); setScoreBleus('');
-                setGoalsRouges([]); setGoalsBleus([]); setSelectedScorer(''); setSelectedAssist('');
-            };
+                db.collection('cloture').doc('players').onSnapshot(doc => {
+                    if (doc.exists) { players = doc.data().data || []; buildPlayersList(); updatePlayerSelects(); }
+                });
+                db.collection('cloture').doc('scorers').onSnapshot(doc => {
+                    if (doc.exists) scorers = doc.data().data || {};
+                });
+                db.collection('cloture').doc('assists').onSnapshot(doc => {
+                    if (doc.exists) assists = doc.data().data || {};
+                });
+            } catch(e) {
+                document.getElementById('firebaseStatus').textContent = '⚠️ Hors-ligne';
+            }
+        }
 
-            const handleMatchSelect = (e) => {
-                const value = e.target.value;
-                if (!value) { resetForm(); return; }
-                const match = matches.find(m => m.journee === parseInt(value));
-                if (match) {
-                    setSelectedMatch(match);
-                    setSelectedDate(match.date);
-                    setScoreRouges(match.scoreRouges !== null ? String(match.scoreRouges) : '');
-                    setScoreBleus(match.scoreBleus !== null ? String(match.scoreBleus) : '');
-                    setGoalsRouges(match.goalsRouges || []);
-                    setGoalsBleus(match.goalsBleus || []);
-                }
-            };
+        // =====================
+        // CALENDRIER
+        // =====================
+        function buildMatchSelect() {
+            const sel = document.getElementById('matchSelect');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">-- Choisir une journée --</option>';
+            matches.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.journee;
+                const d = new Date(m.date + 'T12:00:00');
+                const dateStr = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+                const status = m.scoreRouges !== null ? ` ✅ (${m.scoreRouges}-${m.scoreBleus})` : ' ⏳';
+                opt.textContent = `J${m.journee} • ${dateStr}${status}`;
+                if (m.scoreRouges !== null) opt.style.color = '#16a34a';
+                sel.appendChild(opt);
+            });
+            if (current) sel.value = current;
+        }
 
-            const handleResetData = async () => {
-                if (window.confirm('⚠️ Réinitialiser TOUTES les données ? Irréversible !')) {
-                    setMatches(DEFAULT_MATCHES); setPlayers([]); setScorers({}); setAssists({});
-                    await saveData(DEFAULT_MATCHES, [], {}, {});
-                    resetForm();
-                    alert('✅ Données réinitialisées !');
-                }
-            };
+        function selectMatch() {
+            const val = document.getElementById('matchSelect').value;
+            if (!val) {
+                document.getElementById('matchForm').style.display = 'none';
+                selectedJournee = null;
+                return;
+            }
+            selectMatchByJournee(parseInt(val));
+        }
 
-            return (
-                <div className="min-h-screen bg-gradient-to-br from-red-900 via-red-800 to-red-900 p-3">
-                    <div className="max-w-4xl mx-auto">
+        function selectMatchByJournee(journee) {
+            selectedJournee = journee;
+            const match = matches.find(m => m.journee === journee);
+            if (!match) return;
 
-                        {/* HEADER */}
-                        <div className="bg-white rounded-lg shadow-xl p-3 mb-3">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 bg-red-600 rounded-full"></div>
-                                    <div className="w-8 h-8 bg-blue-600 rounded-full"></div>
-                                    <div>
-                                        <h1 className="text-lg font-bold">🔒 ADMIN - Championnat de Clôture</h1>
-                                        <p className="text-xs text-gray-500">Rouges vs Bleus • 18 journées</p>
-                                    </div>
-                                </div>
-                                <span className="text-xs text-gray-500">{status}</span>
-                            </div>
+            document.getElementById('matchForm').style.display = 'block';
+            document.getElementById('matchDate').value = match.date;
+            updateDateLabel();
+            document.getElementById('scoreRouges').value = match.scoreRouges !== null ? match.scoreRouges : '';
+            document.getElementById('scoreBleus').value = match.scoreBleus !== null ? match.scoreBleus : '';
+            goalsRouges = match.goalsRouges ? [...match.goalsRouges] : [];
+            goalsBleus = match.goalsBleus ? [...match.goalsBleus] : [];
+            renderGoals();
+        }
+
+        function updateDateLabel() {
+            const val = document.getElementById('matchDate').value;
+            if (val) {
+                const d = new Date(val + 'T12:00:00');
+                document.getElementById('dateLabel').textContent = '📌 ' + d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            }
+        }
+
+        // =====================
+        // JOUEURS
+        // =====================
+        function addPlayer() {
+            const name = document.getElementById('newPlayer').value.trim();
+            if (!name) return;
+            if (players.includes(name)) { alert('Ce joueur existe déjà !'); return; }
+            players = [...players, name].sort();
+            buildPlayersList();
+            updatePlayerSelects();
+            document.getElementById('newPlayer').value = '';
+            savePlayersToFirebase();
+            alert('✅ ' + name + ' ajouté !');
+        }
+
+        function buildPlayersList() {
+            document.getElementById('playerCount').textContent = players.length;
+            const div = document.getElementById('playersList');
+            if (players.length === 0) {
+                div.innerHTML = '<p style="color:#9ca3af;font-size:12px;">Aucun joueur</p>';
+            } else {
+                div.innerHTML = players.map(p => `<span class="tag">${p}</span>`).join('');
+            }
+        }
+
+        function updatePlayerSelects() {
+            const opts = '<option value="">--</option>' + players.map(p => `<option value="${p}">${p}</option>`).join('');
+            document.getElementById('goalScorer').innerHTML = '<option value="">-- Buteur --</option>' + players.map(p => `<option value="${p}">${p}</option>`).join('');
+            document.getElementById('goalAssist').innerHTML = '<option value="">-- Passeur --</option>' + players.map(p => `<option value="${p}">${p}</option>`).join('');
+        }
+
+        // =====================
+        // BUTS
+        // =====================
+        function addGoal() {
+            const scorer = document.getElementById('goalScorer').value;
+            const assist = document.getElementById('goalAssist').value || 'Aucune';
+            const team = document.getElementById('goalTeam').value;
+            if (!scorer) { alert('Sélectionnez un buteur'); return; }
+            const goal = { scorer, assist };
+            if (team === 'rouges') goalsRouges.push(goal);
+            else goalsBleus.push(goal);
+            document.getElementById('goalScorer').value = '';
+            document.getElementById('goalAssist').value = '';
+            renderGoals();
+        }
+
+        function removeGoal(team, idx) {
+            if (team === 'rouges') goalsRouges.splice(idx, 1);
+            else goalsBleus.splice(idx, 1);
+            renderGoals();
+        }
+
+        function renderGoals() {
+            document.getElementById('countRouges').textContent = goalsRouges.length;
+            document.getElementById('countBleus').textContent = goalsBleus.length;
+
+            const rDiv = document.getElementById('goalsRougesList');
+            rDiv.innerHTML = goalsRouges.length === 0
+                ? '<p style="color:#9ca3af;font-size:11px;text-align:center;">Aucun but</p>'
+                : goalsRouges.map((g, i) => `
+                    <div class="goal-item">
+                        <div>
+                            <div>⚽ <strong>${g.scorer}</strong></div>
+                            ${g.assist !== 'Aucune' ? `<div style="color:#6b7280;">🎯 ${g.assist}</div>` : ''}
                         </div>
+                        <button onclick="removeGoal('rouges',${i})">❌</button>
+                    </div>`).join('');
 
-                        {/* JOUEURS */}
-                        <div className="bg-white rounded-lg shadow-lg p-3 mb-3">
-                            <h2 className="text-lg font-bold mb-2">👥 Joueurs</h2>
-                            <div className="flex gap-2 mb-2">
-                                <input
-                                    type="text"
-                                    className="flex-1 p-2 border-2 rounded text-sm"
-                                    placeholder="Nom du joueur"
-                                    value={newPlayerName}
-                                    onChange={(e) => setNewPlayerName(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && addPlayer()}
-                                />
-                                <button onClick={addPlayer} className="bg-green-600 text-white px-4 py-2 rounded font-bold text-sm">➕ Ajouter</button>
-                            </div>
-                            <div className="bg-gray-50 p-2 rounded max-h-24 overflow-y-auto">
-                                <p className="font-semibold text-xs mb-1">Joueurs inscrits ({players.length}) :</p>
-                                <div className="flex flex-wrap gap-1">
-                                    {players.length > 0
-                                        ? players.map(p => <span key={p} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs">{p}</span>)
-                                        : <p className="text-gray-400 text-xs">Aucun joueur enregistré</p>
-                                    }
-                                </div>
-                            </div>
+            const bDiv = document.getElementById('goalsBlesList');
+            bDiv.innerHTML = goalsBleus.length === 0
+                ? '<p style="color:#9ca3af;font-size:11px;text-align:center;">Aucun but</p>'
+                : goalsBleus.map((g, i) => `
+                    <div class="goal-item">
+                        <div>
+                            <div>⚽ <strong>${g.scorer}</strong></div>
+                            ${g.assist !== 'Aucune' ? `<div style="color:#6b7280;">🎯 ${g.assist}</div>` : ''}
                         </div>
+                        <button onclick="removeGoal('bleus',${i})">❌</button>
+                    </div>`).join('');
+        }
 
-                        {/* MATCHS */}
-                        <div className="bg-white rounded-lg shadow-lg p-3 mb-3">
-                            <h2 className="text-lg font-bold mb-2">⚽ Saisir un résultat</h2>
+        // =====================
+        // SAUVEGARDER MATCH
+        // =====================
+        function saveMatch() {
+            const sR = document.getElementById('scoreRouges').value;
+            const sB = document.getElementById('scoreBleus').value;
+            const date = document.getElementById('matchDate').value;
 
-                            {/* ✅ Menu déroulant des matchs - toujours visible */}
-                            <div className="mb-3">
-                                <label className="block font-semibold text-sm mb-1 text-gray-700">Sélectionner une journée :</label>
-                                <select
-                                    className="w-full p-3 border-2 border-gray-300 rounded-lg text-sm bg-white"
-                                    onChange={handleMatchSelect}
-                                    value={selectedMatch?.journee || ''}
-                                >
-                                    <option value="">-- Choisir une journée --</option>
-                                    {DEFAULT_MATCHES.map(match => {
-                                        const played = matches.find(m => m.journee === match.journee);
-                                        return (
-                                            <option key={match.journee} value={match.journee}>
-                                                J{match.journee} • {formatDate(match.date)}
-                                                {played && played.scoreRouges !== null ? ` ✅ (${played.scoreRouges}-${played.scoreBleus})` : ' ⏳ À jouer'}
-                                            </option>
-                                        );
-                                    })}
-                                </select>
-                            </div>
+            if (!selectedJournee || sR === '' || sB === '') { alert('⚠️ Remplissez les scores'); return; }
+            if (parseInt(sR) !== goalsRouges.length || parseInt(sB) !== goalsBleus.length) {
+                alert(`⚠️ Nombre de buts incorrect !\nRouges: ${goalsRouges.length} buts / score ${sR}\nBleus: ${goalsBleus.length} buts / score ${sB}`);
+                return;
+            }
 
-                            {selectedMatch && (
-                                <div className="space-y-3">
-                                    {/* DATE */}
-                                    <div className="bg-blue-50 p-3 rounded-lg">
-                                        <label className="block font-semibold text-sm mb-1 text-blue-800">📅 Date du match :</label>
-                                        <input
-                                            type="date"
-                                            className="w-full p-2 border-2 border-blue-300 rounded-lg text-sm bg-white"
-                                            value={selectedDate}
-                                            onChange={(e) => {
-                                                setSelectedDate(e.target.value);
-                                                setSelectedMatch({ ...selectedMatch, date: e.target.value });
-                                            }}
-                                        />
-                                        {selectedDate && (
-                                            <p className="text-xs text-blue-700 mt-1 font-semibold">
-                                                📌 {formatDate(selectedDate)}
-                                            </p>
-                                        )}
-                                    </div>
+            const idx = matches.findIndex(m => m.journee === selectedJournee);
+            matches[idx] = { ...matches[idx], date, scoreRouges: parseInt(sR), scoreBleus: parseInt(sB), goalsRouges: [...goalsRouges], goalsBleus: [...goalsBleus] };
 
-                                    {/* SCORES */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="bg-red-50 p-2 rounded-lg">
-                                            <label className="block font-semibold text-xs mb-1 text-red-700">🔴 Score Rouges :</label>
-                                            <input
-                                                type="number" min="0"
-                                                className="w-full p-2 border-2 border-red-300 rounded text-center text-xl font-bold"
-                                                value={scoreRouges}
-                                                onChange={(e) => setScoreRouges(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="bg-blue-50 p-2 rounded-lg">
-                                            <label className="block font-semibold text-xs mb-1 text-blue-700">🔵 Score Bleus :</label>
-                                            <input
-                                                type="number" min="0"
-                                                className="w-full p-2 border-2 border-blue-300 rounded text-center text-xl font-bold"
-                                                value={scoreBleus}
-                                                onChange={(e) => setScoreBleus(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
+            // Mettre à jour les stats
+            [...goalsRouges, ...goalsBleus].forEach(g => {
+                scorers[g.scorer] = (scorers[g.scorer] || 0) + 1;
+                if (g.assist !== 'Aucune') assists[g.assist] = (assists[g.assist] || 0) + 1;
+            });
 
-                                    {/* BUTEURS */}
-                                    <div className="border-2 border-gray-200 rounded-lg p-3">
-                                        <h3 className="font-bold text-sm mb-2">⚽ Ajouter un but</h3>
-                                        <div className="space-y-2">
-                                            <select
-                                                className="w-full p-2 border-2 rounded text-sm"
-                                                value={selectedTeam}
-                                                onChange={(e) => setSelectedTeam(e.target.value)}
-                                            >
-                                                <option value="rouges">🔴 Équipe Rouges</option>
-                                                <option value="bleus">🔵 Équipe Bleus</option>
-                                            </select>
-                                            <select
-                                                className="w-full p-2 border-2 rounded text-sm"
-                                                value={selectedScorer}
-                                                onChange={(e) => setSelectedScorer(e.target.value)}
-                                            >
-                                                <option value="">-- Buteur --</option>
-                                                {players.map(p => <option key={p} value={p}>{p}</option>)}
-                                            </select>
-                                            <select
-                                                className="w-full p-2 border-2 rounded text-sm"
-                                                value={selectedAssist}
-                                                onChange={(e) => setSelectedAssist(e.target.value)}
-                                            >
-                                                <option value="">-- Passeur (optionnel) --
+            saveToFirebase();
+            buildMatchSelect();
+            document.getElementById('matchSelect').value = selectedJournee;
+            alert('✅ Match enregistré !');
+        }
+
+        // =====================
+        // FIREBASE SAVES
+        // =====================
+        async function saveToFirebase() {
+            if (!db) return;
+            try {
+                await db.collection('cloture').doc('matches').set({ data: matches });
+                await db.collection('cloture').doc('scorers').set({ data: scorers });
+                await db.collection('cloture').doc('assists').set({ data: assists });
+            } catch(e) { console.error(e); }
+        }
+
+        async function savePlayersToFirebase() {
+            if (!db) return;
+            try { await db.collection('cloture').doc('players').set({ data: players }); }
+            catch(e) { console.error(e); }
+        }
+
+        // =====================
+        // RESET
+        // =====================
+        function resetAll() {
+            if (!confirm('⚠️ Réinitialiser TOUTES les données ? Irréversible !')) return;
+            matches = DATES.map((d, i) => ({ journee: i+1, date: d, scoreRouges: null, scoreBleus: null, goalsRouges: [], goalsBleus: [] }));
+            players = []; scorers = {}; 
